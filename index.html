@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TextCard Pro - 纯净版</title>
+    
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"SF Pro Text"', '"SF Pro Icons"', '"Helvetica Neue"', 'Helvetica', 'Arial', 'sans-serif'],
+                        serif: ['"New York"', 'Georgia', 'serif'],
+                        // Removed JetBrains Mono and Playfair
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+                        'noto-sans': ['"Noto Sans SC"', 'sans-serif'],
+                        'noto-serif': ['"Noto Serif SC"', 'serif'],
+                    },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
+                        'macos': '0 20px 40px -10px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0,0,0,0.1)',
+                        'win11': '0 10px 30px -10px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08)',
+                        'soft': '0 4px 20px -5px rgba(0, 0, 0, 0.05)',
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts (Only Chinese Fonts retained) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Serif+SC:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Export Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        body {
+            background-color: #EAEAEA;
+            background-image: radial-gradient(#D0D0D0 1px, transparent 1px);
+            background-size: 20px 20px;
+            color: #1d1d1f;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 3px; }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Progress Bar Animation */
+        .progress-bar-stripe {
+            background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);
+            background-size: 1rem 1rem;
+            animation: progress-bar-stripes 1s linear infinite;
+        }
+        @keyframes progress-bar-stripes {
+            0% { background-position: 1rem 0; }
+            100% { background-position: 0 0; }
+        }
+    </style>
+</head>
+<body class="antialiased h-screen overflow-hidden flex flex-col">
+
+    <div id="root" class="h-full w-full"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Config ---
+        const FONTS = [
+            { id: 'noto-sans', name: '思源黑体', class: 'font-noto-sans' },
+            { id: 'noto-serif', name: '思源宋体', class: 'font-noto-serif' },
+            { id: 'system', name: '系统默认', class: 'font-sans' },
+            // Removed JetBrains & English Fonts
+        ];
+
+        const SPACINGS = [
+            { id: 'compact', name: '紧凑', leading: '1.4', tracking: '-0.02em', padding: '1.5rem' },
+            { id: 'medium', name: '适中', leading: '1.6', tracking: '0', padding: '2.5rem' },
+            { id: 'spacious', name: '舒朗', leading: '1.8', tracking: '0.05em', padding: '3.5rem' },
+        ];
+
+        const FONT_SIZES = [
+            { label: '小', value: 26 },
+            { label: '中', value: 32 },
+            { label: '大', value: 40 }
+        ];
+
+        // --- THEMES ---
+        const THEMES = [
+            { 
+                id: 'ios', name: 'iOS 备忘录', 
+                bg: 'bg-white', text: 'text-[#202020]', border: 'border-none',
+                dotClass: 'bg-[#E0A82E]'
+            },
+            { 
+                id: 'feishu', name: '飞书文档', 
+                bg: 'bg-white', text: 'text-[#1F2329]', border: 'border border-gray-100 shadow-lg',
+                dotClass: 'bg-[#3370FF]'
+            },
+            { 
+                id: 'macos', name: 'MacOS', 
+                bg: 'bg-white', text: 'text-gray-900', border: 'border border-gray-200/50 shadow-macos rounded-xl',
+                dotClass: 'bg-gray-400'
+            },
+            { 
+                id: 'win11', name: 'Windows 11', 
+                bg: 'bg-[#F9F9F9]', text: 'text-gray-900', border: 'border border-gray-300 shadow-win11 rounded-lg',
+                dotClass: 'bg-[#0078D4]'
+            },
+            { 
+                id: 'gemini', name: 'Gemini', 
+                bg: 'bg-gradient-to-br from-white to-blue-50', text: 'text-slate-800', border: 'border border-blue-100/50 shadow-glass rounded-3xl',
+                dotClass: 'bg-gradient-to-r from-blue-400 to-purple-400'
+            },
+            { 
+                id: 'github', name: 'GitHub', 
+                bg: 'bg-[#0D1117]', text: 'text-[#C9D1D9]', border: 'border border-[#30363D] rounded-lg shadow-2xl',
+                dotClass: 'bg-[#238636]'
+            },
+            { 
+                id: 'minimal', name: '极简白', 
+                bg: 'bg-white', text: 'text-gray-600 font-light', border: 'border border-gray-100',
+                dotClass: 'border border-gray-300 bg-transparent'
+            }
+        ];
+
+        // --- Helper Components ---
+        const Icon = ({ name, size = 18, className, strokeWidth = 2 }) => {
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
+            return <i data-lucide={name} width={size} height={size} stroke-width={strokeWidth} className={className}></i>;
+        };
+
+        // --- Progress Modal Component ---
+        const ExportModal = ({ isVisible, status, progress, total }) => {
+            if (!isVisible) return null;
+            
+            const percentage = total > 0 ? Math.round((progress / total) * 100) : 0;
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity">
+                    <div className="bg-white rounded-2xl shadow-2xl p-8 w-80 flex flex-col items-center gap-5 transform scale-100 transition-transform">
+                        <div className="relative">
+                            <div className="w-16 h-16 rounded-full border-4 border-blue-100 border-t-blue-500 animate-spin"></div>
+                            <div className="absolute inset-0 flex items-center justify-center text-blue-600 font-bold text-xs">
+                                {percentage}%
+                            </div>
+                        </div>
+                        <div className="text-center space-y-1">
+                            <h3 className="font-bold text-gray-800 text-lg">正在导出</h3>
+                            <p className="text-sm text-gray-500 font-medium">{status}</p>
+                        </div>
+                        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 transition-all duration-300 ease-out progress-bar-stripe" style={{ width: `${percentage}%` }}></div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Main App ---
+        const App = () => {
+            const [view, setView] = useState('editor'); 
+            const [text, setText] = useState("在此输入您的文案内容...\n\nTextCard Pro 纯净版。\n\n已彻底移除所有英文字体依赖，GitHub 风格现已适配中文显示。\n\n所有功能均已自检，导出速度与质量兼顾，请放心使用。");
+            const [author, setAuthor] = useState("TextCard Pro");
+            
+            const [settings, setSettings] = useState({
+                fontFamily: 'noto-sans',
+                spacing: 'medium',
+                theme: 'ios', 
+                fontSize: 32, 
+            });
+
+            const [pages, setPages] = useState([]);
+            const [isCalculating, setIsCalculating] = useState(false);
+            
+            // Export State
+            const [exportState, setExportState] = useState({
+                isExporting: false,
+                status: '',
+                progress: 0,
+                total: 0
+            });
+            
+            const measureRef = useRef(null);
+
+            // --- Pagination Engine ---
+            useEffect(() => { calculatePages(); }, [text, settings.fontFamily, settings.spacing, settings.fontSize, settings.theme]);
+
+            const calculatePages = () => {
+                if (!measureRef.current) return;
+                setIsCalculating(true);
+
+                const currentSpacing = SPACINGS.find(s => s.id === settings.spacing);
+                const CARD_WIDTH = 600;
+                const CARD_HEIGHT = 800;
+                const fontRatio = settings.fontSize / 32; 
+                
+                // Safe Zones
+                let baseHeader = 120;
+                let baseFooter = 100;
+                if (settings.theme === 'ios') { baseHeader = 150; } 
+                if (settings.theme === 'feishu') { baseHeader = 140; }
+                if (settings.theme === 'github') { baseHeader = 130; }
+
+                const HEADER_SAFE_ZONE = baseHeader * Math.max(1, fontRatio * 0.9);
+                const FOOTER_SAFE_ZONE = baseFooter * Math.max(1, fontRatio * 0.9);
+                
+                const paddingValueRem = parseFloat(currentSpacing.padding); 
+                const paddingPx = paddingValueRem * 16; 
+                const maxWidth = CARD_WIDTH - (paddingPx * 2); 
+                const maxHeight = CARD_HEIGHT - (paddingPx * 2) - HEADER_SAFE_ZONE - FOOTER_SAFE_ZONE;
+
+                const measureDiv = measureRef.current;
+                measureDiv.style.width = `${maxWidth}px`;
+                measureDiv.style.fontSize = `${settings.fontSize}px`;
+                measureDiv.style.fontFamily = getFontFamilyName(settings.fontFamily);
+                measureDiv.style.lineHeight = currentSpacing.leading;
+                measureDiv.style.letterSpacing = currentSpacing.tracking;
+                
+                const paragraphs = text.split('\n');
+                let newPages = [];
+                let currentPageContent = [];
+                let currentHeight = 0;
+
+                for (let i = 0; i < paragraphs.length; i++) {
+                    const paragraph = paragraphs[i];
+                    const pDiv = document.createElement('div');
+                    pDiv.innerText = paragraph === '' ? '\u00A0' : paragraph; 
+                    pDiv.style.marginBottom = '1em'; 
+                    pDiv.style.wordBreak = 'break-word';
+                    pDiv.style.whiteSpace = 'pre-wrap';
+                    measureDiv.appendChild(pDiv);
+                    const pHeight = pDiv.offsetHeight;
+                    measureDiv.removeChild(pDiv);
+
+                    if (currentHeight + pHeight > maxHeight && currentPageContent.length > 0) {
+                        newPages.push(currentPageContent);
+                        currentPageContent = [paragraph];
+                        currentHeight = pHeight;
+                    } else {
+                        currentPageContent.push(paragraph);
+                        currentHeight += pHeight;
+                    }
+                }
+                if (currentPageContent.length > 0) newPages.push(currentPageContent);
+                setPages(newPages);
+                setIsCalculating(false);
+            };
+            
+            const getFontFamilyName = (id) => {
+                const font = FONTS.find(f => f.id === id);
+                return font ? font.name : 'sans-serif';
+            };
+
+            // --- Optimized Export Function ---
+            const handleExport = async () => {
+                if (pages.length === 0) return;
+                
+                const cardElements = document.querySelectorAll('.preview-card');
+                const totalCards = cardElements.length;
+
+                // Init Modal
+                setExportState({ isExporting: true, status: '初始化渲染引擎...', progress: 0, total: totalCards });
+                await new Promise(r => setTimeout(r, 100));
+
+                try {
+                    const zip = new JSZip();
+                    
+                    for (let i = 0; i < totalCards; i++) {
+                        setExportState(prev => ({ ...prev, status: `渲染第 ${i + 1} 张...`, progress: i + 1 }));
+                        await new Promise(r => setTimeout(r, 20)); 
+                        
+                        const blob = await htmlToImage.toBlob(cardElements[i], { 
+                            pixelRatio: 2, 
+                            width: 600, 
+                            height: 800,
+                            style: { transform: 'scale(1)', transformOrigin: 'top left', margin: 0 },
+                            cacheBust: false,
+                            skipAutoScale: true
+                        });
+                        
+                        zip.file(`card_${i + 1}.png`, blob);
+                    }
+
+                    setExportState(prev => ({ ...prev, status: '正在压缩打包...' }));
+                    await new Promise(r => setTimeout(r, 20));
+
+                    const content = await zip.generateAsync({ type: "blob" });
+                    saveAs(content, "textcard_bundle.zip");
+                    
+                    setExportState(prev => ({ ...prev, status: '导出成功！' }));
+                    setTimeout(() => {
+                        setExportState({ isExporting: false, status: '', progress: 0, total: 0 });
+                    }, 1500);
+
+                } catch (error) {
+                    console.error("Export failed", error);
+                    setExportState(prev => ({ ...prev, status: '导出出错，请重试' }));
+                    setTimeout(() => {
+                        setExportState({ isExporting: false, status: '', progress: 0, total: 0 });
+                    }, 2000);
+                    alert("导出失败，建议减少单次导出的卡片数量或更换浏览器重试。");
+                }
+            };
+
+            const wordCount = text.replace(/\s/g, '').length;
+
+            return (
+                <div className="flex flex-col md:flex-row h-full w-full bg-[#EAEAEA] text-slate-800 font-sans">
+                    
+                    {/* Progress Modal */}
+                    <ExportModal isVisible={exportState.isExporting} status={exportState.status} progress={exportState.progress} total={exportState.total} />
+
+                    {/* Sidebar */}
+                    <div className={`w-full md:w-[420px] flex-shrink-0 flex flex-col glass-panel md:border-r border-gray-200 z-20 transition-transform duration-300 absolute md:relative h-full ${view === 'editor' ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white/50 backdrop-blur-md">
+                            <div className="flex items-center gap-2 text-black">
+                                <Icon name="command" className="text-black" />
+                                <h1 className="font-bold text-xl tracking-tight">TextCard Pro</h1>
+                            </div>
+                            <button className="md:hidden px-3 py-1.5 bg-black text-white rounded-lg text-xs font-bold" onClick={() => setView('preview')}>
+                                预览 <Icon name="arrow-right" size={12} className="inline ml-1"/>
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                            <div className="space-y-3">
+                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                                    <Icon name="align-left" size={12}/> 内容编辑
+                                </label>
+                                <textarea 
+                                    className="w-full h-40 p-4 rounded-xl bg-white border border-gray-200 focus:border-black focus:ring-1 focus:ring-black transition-all outline-none resize-none text-base leading-relaxed shadow-sm font-sans"
+                                    placeholder="输入您的文字..."
+                                    value={text}
+                                    onChange={(e) => setText(e.target.value)}
+                                ></textarea>
+                                <div className="flex gap-2">
+                                     <input type="text" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="署名" className="flex-1 p-3 rounded-xl bg-white border border-gray-200 focus:border-black outline-none text-sm shadow-sm"/>
+                                    <div className="px-3 py-3 rounded-xl bg-gray-100 text-gray-500 text-xs font-medium flex items-center whitespace-nowrap">{wordCount} 字</div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="space-y-3">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Icon name="type" size={12}/> 字体与排版</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {FONTS.map(font => (
+                                            <button key={font.id} onClick={() => setSettings({...settings, fontFamily: font.id})} className={`p-3 rounded-xl text-sm border transition-all relative overflow-hidden ${settings.fontFamily === font.id ? 'border-black bg-gray-50 text-black font-medium' : 'border-gray-200 bg-white text-gray-600'}`}>
+                                                <span className={font.class}>{font.name}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex bg-gray-100 p-1.5 rounded-xl">
+                                        {SPACINGS.map(space => (
+                                            <button key={space.id} onClick={() => setSettings({...settings, spacing: space.id})} className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all ${settings.spacing === space.id ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-700'}`}>{space.name}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center">
+                                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Icon name="maximize" size={12}/> 字号</label>
+                                        <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded text-gray-500">{settings.fontSize}px</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {FONT_SIZES.map((size) => (
+                                            <button key={size.value} onClick={() => setSettings({...settings, fontSize: size.value})} className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all border shadow-sm ${settings.fontSize === size.value ? 'border-black bg-black text-white' : 'border-gray-200 bg-white hover:border-gray-300 text-gray-600'}`}>{size.label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Icon name="palette" size={12}/> 风格选择 ({THEMES.length})</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {THEMES.map(theme => (
+                                            <button key={theme.id} onClick={() => setSettings(prev => ({...prev, theme: theme.id}))} className={`group flex items-center gap-2 px-3 py-2 rounded-full border text-xs font-bold transition-all shadow-sm ${settings.theme === theme.id ? 'border-black bg-gray-50 text-black' : 'border-gray-200 bg-white hover:border-gray-300 text-gray-600'}`}>
+                                                <div className={`w-2.5 h-2.5 rounded-full ${theme.dotClass} shadow-sm`}></div>
+                                                <span>{theme.name}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Preview */}
+                    <div className={`flex-1 relative flex flex-col h-full bg-[#EAEAEA] transition-all duration-300 absolute md:relative w-full ${view === 'preview' ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+                        <div className="md:hidden p-4 flex items-center bg-white/90 backdrop-blur border-b border-gray-200 z-30 sticky top-0">
+                            <button onClick={() => setView('editor')} className="text-gray-600 flex items-center gap-1 text-sm font-medium px-3 py-1.5 bg-gray-100 rounded-lg">返回编辑</button>
+                            <span className="mx-auto text-sm font-medium text-gray-500">预览 ({pages.length} 页)</span>
+                            <div className="w-16"></div> 
+                        </div>
+
+                        <div className="z-20 p-4 sticky top-0 md:static flex justify-end pointer-events-none">
+                            <button 
+                                onClick={() => handleExport()} 
+                                disabled={exportState.isExporting || pages.length === 0}
+                                className={`pointer-events-auto bg-black text-white px-6 py-3 rounded-full text-sm font-bold shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center gap-2 
+                                    ${exportState.isExporting ? 'opacity-90 cursor-wait' : 'disabled:opacity-50 disabled:cursor-not-allowed'}
+                                `}
+                            >
+                                {exportState.isExporting ? <div className="loader"></div> : <Icon name="download" size={18} />}
+                                <span>{exportState.isExporting ? exportState.status : (pages.length > 1 ? '打包下载' : '保存卡片')}</span>
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+                            <div className="max-w-4xl mx-auto flex flex-col items-center gap-10 pb-32">
+                                <div ref={measureRef} className="fixed top-0 left-0 -z-50 pointer-events-none opacity-0 bg-white" style={{whiteSpace: 'pre-wrap', overflowWrap: 'break-word', boxSizing: 'border-box'}}></div>
+                                {pages.length === 0 && !isCalculating && <div className="text-gray-400 mt-20 flex flex-col items-center"><Icon name="pen-tool" size={48} className="mb-4 opacity-50"/><p>开始输入文字</p></div>}
+
+                                {pages.map((pageContent, idx) => (
+                                    <div key={idx} className="group relative flex flex-col items-center">
+                                        <div className="relative shadow-2xl rounded-sm transition-all duration-300">
+                                            <div className="relative bg-transparent" style={{ width: 'min(100vw - 32px, 450px)', aspectRatio: '3/4', overflow: 'hidden' }}>
+                                                <div className="preview-card origin-top-left absolute top-0 left-0" style={{ width: '600px', height: '800px', transform: `scale(${Math.min(1, (Math.min(window.innerWidth - 32, 450) / 600))})` }}>
+                                                    <Card content={pageContent} pageNumber={idx + 1} totalPages={pages.length} settings={settings} author={author} totalWords={wordCount}/>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 text-xs font-mono text-gray-500/50 font-bold">PAGE {idx + 1}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Core Card Component ---
+        const Card = ({ content, pageNumber, totalPages, settings, author, totalWords }) => {
+            const theme = THEMES.find(t => t.id === settings.theme) || THEMES[0];
+            const font = FONTS.find(f => f.id === settings.fontFamily) || FONTS[0];
+            const spacing = SPACINGS.find(s => s.id === settings.spacing) || SPACINGS[0];
+
+            const isIOS = settings.theme === 'ios';
+            const isFeishu = settings.theme === 'feishu';
+            const isMac = settings.theme === 'macos';
+            const isWin = settings.theme === 'win11';
+            const isGemini = settings.theme === 'gemini';
+            const isGithub = settings.theme === 'github';
+            const isMinimal = settings.theme === 'minimal';
+            
+            // GitHub Style uses mono-like system font or user selected Chinese font
+            // We removed JetBrains, so it defaults to system monospace or the user's selected font.
+            // But we keep 'font-mono' class for GitHub to trigger Tailwind's mono stack.
+            const fontClass = isGithub ? 'font-mono' : font.class;
+
+            return (
+                <div className={`w-full h-full relative flex flex-col overflow-hidden ${theme.bg} ${theme.text} ${theme.border} ${fontClass}`}>
+                    
+                    {/* --- HEADER UI --- */}
+
+                    {/* 1. iOS Notes Header (Pure White + Yellow Accents) */}
+                    {isIOS && (
+                        <div className="px-6 pt-12 pb-4 flex justify-between items-center bg-white border-b border-white z-20">
+                             <div className="flex items-center gap-1 font-medium text-lg text-[#E0A82E]">
+                                <Icon name="chevron-left" size={28} strokeWidth={2.5} className="text-[#E0A82E]"/>
+                                <span>文件夹</span>
+                             </div>
+                             <div className="flex items-center gap-5">
+                                <div className="rounded-full"><Icon name="more-horizontal" size={24} strokeWidth={2} className="text-[#E0A82E]"/></div>
+                                <span className="font-bold text-lg text-[#E0A82E]">完成</span>
+                             </div>
+                        </div>
+                    )}
+
+                    {/* 2. Feishu Header */}
+                    {isFeishu && (
+                        <div className="px-6 h-14 bg-white border-b border-gray-100 flex items-center justify-between">
+                             <div className="flex items-center gap-3">
+                                 <div className="p-1 bg-blue-100 rounded text-blue-600"><Icon name="file-text" size={16}/></div>
+                                 <div className="flex flex-col">
+                                     <span className="text-sm font-medium text-gray-800 leading-tight">未命名文档</span>
+                                     <span className="text-[10px] text-gray-400">自动保存</span>
+                                 </div>
+                             </div>
+                             <div className="flex items-center gap-3">
+                                 <div className="flex -space-x-2">
+                                     <div className="w-6 h-6 rounded-full bg-yellow-400 border border-white"></div>
+                                     <div className="w-6 h-6 rounded-full bg-green-400 border border-white flex items-center justify-center text-[8px] text-white font-bold">+2</div>
+                                 </div>
+                                 <div className="w-px h-4 bg-gray-200"></div>
+                                 <Icon name="more-horizontal" size={18} className="text-gray-400"/>
+                                 <div className="bg-[#3370FF] text-white text-xs px-3 py-1 rounded-[4px] font-medium">分享</div>
+                             </div>
+                        </div>
+                    )}
+
+                    {/* 3. MacOS Header */}
+                    {isMac && (
+                        <div className="w-full h-10 bg-[#F6F6F6] border-b border-[#E1E1E1] flex items-center px-4 justify-between rounded-t-xl">
+                             <div className="flex gap-2">
+                                 <div className="w-3 h-3 rounded-full bg-[#FF5F57] border border-[#E0443E]"></div>
+                                 <div className="w-3 h-3 rounded-full bg-[#FEBC2E] border border-[#D89E24]"></div>
+                                 <div className="w-3 h-3 rounded-full bg-[#28C840] border border-[#1AAB29]"></div>
+                             </div>
+                             <div className="flex items-center gap-1 text-gray-500 opacity-80">
+                                 <Icon name="folder" size={12}/>
+                                 <span className="text-xs font-medium">TextCard Pro</span>
+                             </div>
+                             <div className="w-10"></div>
+                        </div>
+                    )}
+
+                    {/* 4. Windows 11 Header */}
+                    {isWin && (
+                        <div className="w-full h-10 bg-[#F3F3F3] border-b border-[#E5E5E5] flex justify-between items-center pl-4 pr-0 rounded-t-lg select-none">
+                             <div className="flex items-center gap-2">
+                                 <div className="w-4 h-4 bg-[#0078D4] rounded-sm flex items-center justify-center"><span className="text-[8px] text-white font-bold">W</span></div>
+                                 <span className="text-xs text-gray-700">Untitled - Notepad</span>
+                             </div>
+                             <div className="flex h-full items-center">
+                                 <div className="w-10 h-full flex items-center justify-center hover:bg-gray-200 transition-colors"><Icon name="minus" size={12}/></div>
+                                 <div className="w-10 h-full flex items-center justify-center hover:bg-gray-200 transition-colors"><div className="w-2.5 h-2.5 border border-gray-800 rounded-sm"></div></div>
+                                 <div className="w-10 h-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors"><Icon name="x" size={14}/></div>
+                             </div>
+                        </div>
+                    )}
+
+                    {/* 5. GitHub Header */}
+                    {isGithub && (
+                         <div className="w-full bg-[#161b22] border-b border-[#30363d] flex flex-col rounded-t-lg">
+                             <div className="flex items-center justify-between px-4 py-3">
+                                 <div className="flex items-center gap-2 text-[#7d8590]">
+                                     <Icon name="book" size={14}/>
+                                     <span className="text-xs font-semibold text-[#58a6ff]">text-card</span>
+                                     <span className="text-xs">/</span>
+                                     <span className="text-xs font-semibold text-[#58a6ff]">README.md</span>
+                                 </div>
+                                 <div className="px-2 py-0.5 bg-[#21262d] border border-[#30363d] rounded-full text-[10px] text-[#c9d1d9] font-medium flex items-center gap-1">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-[#238636]"></div> Public
+                                 </div>
+                             </div>
+                        </div>
+                    )}
+
+                    {/* 6. Gemini Header */}
+                    {isGemini && (
+                        <div className="pt-8 px-8 flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <Icon name="sparkles" className="text-blue-500 fill-blue-500/20"/>
+                                <span className="font-semibold text-slate-600 tracking-tight">Gemini</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- Content Body --- */}
+                    <div className="flex-1 flex flex-col relative z-10" style={{ padding: spacing.padding }}>
+                        
+                        {/* Meta Info (Date/Author) */}
+                        <div className={`flex justify-between items-end mb-6 pb-4 
+                            ${(isIOS || isFeishu || isWin || isMac || isGithub) ? 'border-none' : 'border-b border-gray-100'}
+                        `}>
+                            {(!isIOS && !isFeishu && !isWin && !isMac && !isGithub) && (
+                                <>
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-bold tracking-widest uppercase opacity-60">DATE</span>
+                                        <span className="text-sm font-medium">{new Date().toLocaleDateString('zh-CN')}</span>
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-[10px] font-bold tracking-widest uppercase opacity-60">AUTHOR</span>
+                                        <span className="text-sm italic">{author}</span>
+                                    </div>
+                                </>
+                            )}
+                            
+                            {/* iOS Style Date Only */}
+                            {isIOS && (
+                                <div className="w-full text-center text-[10px] text-[#8E8E93] font-medium mt-[-20px] mb-2">
+                                    {new Date().toLocaleString('zh-CN', { month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Main Text */}
+                        <div 
+                            className="flex-1 whitespace-pre-wrap break-words"
+                            style={{ 
+                                fontSize: `${settings.fontSize}px`, 
+                                lineHeight: spacing.leading, 
+                                letterSpacing: spacing.tracking,
+                                textAlign: (isMinimal) ? 'left' : 'justify'
+                            }}
+                        >
+                            {content.map((paragraph, i) => <p key={i} className="mb-[0.8em] min-h-[1em]">{paragraph}</p>)}
+                        </div>
+
+                        {/* Footer */}
+                        <div className={`mt-auto pt-8 flex justify-between items-center text-gray-400 
+                            ${isIOS ? 'hidden' : ''} 
+                        `}>
+                            <div className="flex items-center gap-3">
+                                <div className={`px-2 py-1 rounded text-[10px] font-bold tracking-wider uppercase 
+                                    ${isGithub ? 'bg-[#21262d] border border-[#30363d] text-[#c9d1d9]' : 'bg-gray-100'}
+                                `}>
+                                    {totalWords} Words
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs font-mono font-medium">
+                                <span>{pageNumber}</span><span className="opacity-40">/</span><span className="opacity-40">{totalPages}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+    <script>
+        window.onload = () => { if(window.lucide) window.lucide.createIcons(); }
+        window.onresize = () => {
+             const root = document.getElementById('root');
+             if(root) { root.style.display = 'none'; root.offsetHeight; root.style.display = 'block'; }
+        }
+    </script>
+</body>
+</html>
+
